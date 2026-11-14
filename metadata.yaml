@@ -5,7 +5,7 @@ desc: >-
   支持番剧、角色、角色属性、单集、关系、评分与标签/时间筛选查询，
   提供 search_anime / get_entity / get_translation / get_relations /
   get_worklist 五个函数工具供 LLM 调用。
-version: 0.1.0
+version: 0.1.1
 author: ShioMI
 astrbot_version: ">=4.17.0"
 repo: https://github.com/ShioMI39/astrbot_plugin_animerag
