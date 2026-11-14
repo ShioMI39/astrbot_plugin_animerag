@@ -138,10 +138,11 @@ def get_worklist(
         join_params = tags
         having = " HAVING COUNT(DISTINCT wt.tag) > 0"
 
+    matched_sql = "COUNT(DISTINCT wt.tag)" if tags else "0"
     sql = (
         "SELECT w.work_id, w.name, w.name_cn, w.date,"
-        " COUNT(DISTINCT wt.tag) AS matched, MAX(s.score) AS score"
-        " FROM works w"
+        " {} AS matched, MAX(s.score) AS score".format(matched_sql)
+        + " FROM works w"
         " LEFT JOIN work_stats s ON s.work_id = w.work_id"
         + join_sql
         + (" WHERE " + " AND ".join(where) if where else "")
