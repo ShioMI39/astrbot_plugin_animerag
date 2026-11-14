@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.event import AstrMessageEvent
 from astrbot.core.star.filter.command import GreedyStr
 
 from ..core.db.bgm import archive
@@ -16,7 +16,6 @@ KIND_LABEL = {
 
 
 class CommandMixin:
-    @filter.command("检查更新")
     async def cmd_check_update(self, event: AstrMessageEvent) -> None:
         """检查 Bangumi 存档有没有新版本"""
         await self._ensure()
@@ -44,7 +43,6 @@ class CommandMixin:
             )
         )
 
-    @filter.command("召回测试")
     async def cmd_recall(self, event: AstrMessageEvent, query: GreedyStr = "") -> None:
         """看看检索层对某个查询返回什么"""
         await self._ensure()

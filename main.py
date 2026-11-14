@@ -5,6 +5,7 @@ from pathlib import Path
 from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star
+from astrbot.core.star.filter.command import GreedyStr
 from .commands import (
     CommandMixin,
     DetailMixin,
@@ -88,6 +89,22 @@ class AnimeRAG(
         self._moe_cache: dict | None = None
         self._register_web_apis()
 
+
+
+    # ── Commands ────────────────────────────────────────────────
+    # 指令 handler 也必须定义在插件主模块，WebUI 才能通过 module_path
+    # 找到所属插件并修改权限；实现仍留在 CommandMixin。
+    @filter.command("检查更新")
+    async def cmd_check_update(self, event: AstrMessageEvent):
+        """检查 Bangumi 存档有没有新版本"""
+        async for result in CommandMixin.cmd_check_update(self, event):
+            yield result
+
+    @filter.command("召回测试")
+    async def cmd_recall(self, event: AstrMessageEvent, query: GreedyStr = ""):
+        """看看检索层对某个查询返回什么"""
+        async for result in CommandMixin.cmd_recall(self, event, query):
+            yield result
 
     # ── LLM tools ────────────────────────────────────────────────
     @filter.llm_tool(name="search_anime")
