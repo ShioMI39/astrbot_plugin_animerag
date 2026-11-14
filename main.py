@@ -172,6 +172,37 @@ class AnimeRAG(
         return await RelationMixin.get_relations(
             self, event, kind, id, relation=relation, limit=limit)
 
+
+    @filter.llm_tool(name="get_worklist")
+    async def get_worklist(
+        self,
+        event: AstrMessageEvent,
+        tag: list[str] | None = None,
+        start_date: str = "",
+        end_date: str = "",
+        score_min: float | None = None,
+        score_max: float | None = None,
+    ) -> str:
+        """按标签、播出时间和评分筛选作品，返回作品 id、名称、命中 tag 数、日期、评分。
+
+        Args:
+            tag(array[string]): 标签列表，例如 ["恋爱", "治愈", "青春"]；
+                多个 tag 按命中数量排序，命中越多越靠前
+            start_date(string): 起始月份，格式 YYYY-MM，例如 2020-01；留空不限制
+            end_date(string): 结束月份，格式 YYYY-MM，例如 2024-12；留空不限制
+            score_min(number): 最低评分，例如 7.5；留空不限制
+            score_max(number): 最高评分，例如 9.0；留空不限制
+        """
+        return await ToolMixin.get_worklist(
+            self, event,
+            tag=tag,
+            start_date=start_date,
+            end_date=end_date,
+            score_min=score_min,
+            score_max=score_max,
+        )
+
+
     async def initialize(self) -> None:
         """加载索引。"""
         logger.info(

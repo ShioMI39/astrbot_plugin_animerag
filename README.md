@@ -1,6 +1,6 @@
 # Anime 知识库 · AstrBot 插件
 
-基于 **Bangumi 归档** + **萌娘百科** 的部分番剧/角色知识库。给 LLM 提供 `search_anime`、`get_entity`、`get_translation`、`get_relations` 四个工具。
+基于 **Bangumi 归档** + **萌娘百科** 的部分番剧/角色知识库。给 LLM 提供 `search_anime`、`get_entity`、`get_translation`、`get_relations`、`get_worklist` 五个工具。
 
 ## 能回答什么
 
@@ -13,6 +13,7 @@
 | 内容概要 | 「在末日世界旅行的少女」 | 语义 + 标签 | 93.8% @10 |
 | 作品关系 | 「《冰菓》的制作公司」 | `get_relations` | — |
 | 评分 | 「《冰菓》评分」→ 8.1 | `work_stats` | — |
+| 作品筛选 | 「2020-2024 恋爱治愈青春，7.5 分以上」 | `get_worklist` | — |
 
 **不擅长**具体情节回忆。
 工具会明确回答「没有足够匹配的资料」，而不是编造。

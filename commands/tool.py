@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import re
+
 from astrbot.api.event import AstrMessageEvent
+
+from ..core.db.bgm import queries as db_q
 
 KIND_LABEL = {
     "work": "作品",
@@ -103,3 +107,74 @@ class ToolMixin:
                    'get_entity(kind="episode", id=...) 或 '
                    'get_entity(kind="work", id=..., part="episodes", start=N, end=N)。')
         return "\n".join(out)
+
+    async def get_worklist(
+        self,
+        event: AstrMessageEvent,
+        tag: list[str] | None = None,
+        start_date: str = "",
+        end_date: str = "",
+        score_min: float | None = None,
+        score_max: float | None = None,
+    ) -> str:
+        """按标签、时间、评分筛选作品。"""
+        await self._ensure()
+        if self.db is None:
+            return self._missing_message()
+
+        raw_tags = [tag] if isinstance(tag, str) else (tag or [])
+        tags = [
+            str(x).strip()
+            for x in raw_tags
+            if str(x).strip()
+        ]
+        tags = list(dict.fromkeys(tags))
+
+        start = (start_date or "").strip() or None
+        end = (end_date or "").strip() or None
+        month_re = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+        for label, value in (("start_date", start), ("end_date", end)):
+            if value and not month_re.match(value):
+                return "{} 格式应为 YYYY-MM，例如 2024-01。".format(label)
+
+        if start and end and start > end:
+            return "start_date 不能晚于 end_date。"
+        if score_min is not None and score_max is not None and float(score_min) > float(score_max):
+            return "score_min 不能大于 score_max。"
+
+        rows = db_q.get_worklist(
+            self.db.conn,
+            tags,
+            start_month=start,
+            end_month=end,
+            score_min=float(score_min) if score_min is not None else None,
+            score_max=float(score_max) if score_max is not None else None,
+            limit=30,
+        )
+        if not rows:
+            return "没有符合条件的作品。"
+
+        tag_text = "、".join(tags) if tags else "不限"
+        date_text = "{} ~ {}".format(start or "不限", end or "不限")
+        score_text = "{} ~ {}".format(
+            "{:.1f}".format(float(score_min)) if score_min is not None else "不限",
+            "{:.1f}".format(float(score_max)) if score_max is not None else "不限",
+        )
+        lines = [
+            "[作品列表] tag={} · 时间={} · 评分={} · 显示前 {} 部".format(
+                tag_text, date_text, score_text, len(rows))
+        ]
+        for r in rows:
+            title = r["name_cn"] or r["name"] or "#{}".format(r["work_id"])
+            matched = int(r["matched"] or 0)
+            hit = "命中{}/{}".format(matched, len(tags)) if tags else "命中0"
+            date = r["date"] or "—"
+            score = (
+                "{:.1f}".format(float(r["score"]))
+                if r["score"] is not None else "—"
+            )
+            lines.append(
+                "[作品#{}] {} · {} · {} · 评分 {}".format(
+                    r["work_id"], title, hit, date, score)
+            )
+        return "\n".join(lines)

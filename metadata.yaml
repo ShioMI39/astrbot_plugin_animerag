@@ -2,9 +2,9 @@ name: astrbot_plugin_animerag
 display_name: Anime 知识库
 desc: >-
   基于 Bangumi 归档 + 部分萌娘百科的番剧/角色知识库。
-  支持番剧、角色、角色属性、单集、关系与评分查询，
-  提供 search_anime / get_entity / get_translation / get_relations
-  四个函数工具供 LLM 调用。
+  支持番剧、角色、角色属性、单集、关系、评分与标签/时间筛选查询，
+  提供 search_anime / get_entity / get_translation / get_relations /
+  get_worklist 五个函数工具供 LLM 调用。
 version: 0.1.0
 author: ShioMI
 astrbot_version: ">=4.17.0"

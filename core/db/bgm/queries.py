@@ -98,6 +98,66 @@ def get_work_tags(conn: sqlite3.Connection, work_id: int,
     return [dict(r) for r in rows]
 
 
+
+def get_worklist(
+    conn: sqlite3.Connection,
+    tags: list[str] | None = None,
+    *,
+    start_month: str | None = None,
+    end_month: str | None = None,
+    score_min: float | None = None,
+    score_max: float | None = None,
+    limit: int = 30,
+) -> list[dict[str, Any]]:
+    """按 tag/月份/评分筛作品，按 tag 命中数、日期、评分排序。"""
+    tags = list(dict.fromkeys(t.strip() for t in (tags or []) if t and t.strip()))
+    where: list[str] = []
+    where_params: list[Any] = []
+    if start_month:
+        where.append("substr(w.date, 1, 7) >= ?")
+        where_params.append(start_month)
+    if end_month:
+        where.append("substr(w.date, 1, 7) <= ?")
+        where_params.append(end_month)
+    if score_min is not None:
+        where.append("s.score IS NOT NULL AND s.score >= ?")
+        where_params.append(float(score_min))
+    if score_max is not None:
+        where.append("s.score IS NOT NULL AND s.score <= ?")
+        where_params.append(float(score_max))
+
+    join_sql = ""
+    join_params: list[Any] = []
+    having = ""
+    if tags:
+        marks = ",".join("?" for _ in tags)
+        join_sql = (
+            " LEFT JOIN work_tags wt ON wt.work_id = w.work_id"
+            " AND wt.tag IN ({})".format(marks)
+        )
+        join_params = tags
+        having = " HAVING COUNT(DISTINCT wt.tag) > 0"
+
+    sql = (
+        "SELECT w.work_id, w.name, w.name_cn, w.date,"
+        " COUNT(DISTINCT wt.tag) AS matched, MAX(s.score) AS score"
+        " FROM works w"
+        " LEFT JOIN work_stats s ON s.work_id = w.work_id"
+        + join_sql
+        + (" WHERE " + " AND ".join(where) if where else "")
+        + " GROUP BY w.work_id"
+        + having
+        + " ORDER BY matched DESC, (w.date IS NULL), w.date DESC,"
+        " (s.score IS NULL), s.score DESC, w.work_id"
+        " LIMIT ?"
+    )
+    limit = max(1, min(int(limit), 100))
+    return [
+        dict(r)
+        for r in conn.execute(sql, [*join_params, *where_params, limit])
+    ]
+
+
 def get_work_relations(conn: sqlite3.Connection,
                        work_id: int) -> list[dict[str, Any]]:
     rows = conn.execute(

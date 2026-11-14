@@ -3,6 +3,7 @@ from __future__ import annotations
 from astrbot.api.event import AstrMessageEvent
 from astrbot.core.star.filter.command import GreedyStr
 
+from ..core import config as _cfg
 from ..core.db.bgm import archive
 
 KIND_LABEL = {
@@ -21,7 +22,7 @@ class CommandMixin:
         await self._ensure()
         current = self._data_version() or "(未知)"
         try:
-            meta = await archive.fetch_latest()
+            meta = await archive.fetch_latest(proxy=_cfg.update_proxy())
         except Exception as exc:  # noqa: BLE001
             yield event.plain_result("查询失败：{}: {}".format(type(exc).__name__, exc))
             return
