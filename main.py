@@ -46,12 +46,7 @@ class AnimeRAG(
         except Exception:
             pass
 
-        raw_data_dir = str(self.cfg.get("data_dir") or "").strip()
-        if raw_data_dir:
-            p = Path(raw_data_dir)
-            self.data_dir = str(p if p.is_absolute() else _cfg.ROOT / p)
-        else:
-            self.data_dir = str(_cfg.data_dir())
+        self.data_dir = str(_cfg.data_dir())
 
         self.anime_db = str(Path(self.data_dir) / "anime.db")
         self.enable_moegirl = bool(self.cfg.get("enable_moegirl", True))
@@ -218,8 +213,8 @@ class AnimeRAG(
         if missing:
             logger.warning(
                 "[animerag] 数据未安装（缺少 %s），插件进入未就绪模式。"
-                "请先在 WebUI「数据维护 → 资源包」复制直链下载并解压。",
-                "、".join(missing),
+                "请先在 WebUI「数据维护 → 资源包」下载，并解压到 %s。",
+                "、".join(missing), self.data_dir,
             )
             return
         try:
@@ -252,9 +247,9 @@ class AnimeRAG(
     def _missing_message() -> str:
         return (
             "数据包还没有安装，当前无法查询。\n\n"
-            "请打开 WebUI「数据维护 → 资源包」，复制资源包直链下载并解压；"
-            "把 data 文件夹放到插件目录，或在"
-            "「配置 → 其他配置 → 数据目录」里填解压后的 data 路径，然后重启插件。"
+            "请打开 WebUI「数据维护 → 资源包」，下载并解压到：\n"
+            "<AstrBot>/data/plugin_data/astrbot_plugin_animerag/\n"
+            "确保 anime.db、vec/、translate.db 等直接位于该目录下，然后重启插件。"
         )
 
 

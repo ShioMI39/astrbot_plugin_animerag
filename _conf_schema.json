@@ -119,14 +119,8 @@
   "other_group": {
     "type": "object",
     "description": "其他配置",
-    "hint": "数据目录、下载代理",
+    "hint": "下载代理",
     "items": {
-      "data_dir": {
-        "type": "string",
-        "description": "数据目录",
-        "default": "",
-        "hint": "只填数据包根目录，留空用插件目录下的 data/。内部固定读取 anime.db、moegirl.db、translate.db、vec/"
-      },
       "update_proxy": {
         "type": "string",
         "description": "Bangumi dump 下载代理",

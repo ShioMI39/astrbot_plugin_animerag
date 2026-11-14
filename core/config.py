@@ -7,7 +7,6 @@ from functools import lru_cache
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-_DEFAULT_DATA = ROOT / "data"
 SCHEMA_PATH = ROOT / "_conf_schema.json"
 
 PLUGIN_DIR_NAME = ROOT.name
@@ -169,20 +168,28 @@ def get(key: str, default=None):
     return load().get(key, default)
 
 
+def _plugin_data_dir() -> Path:
+    root = astrbot_root()
+    if root is None:
+        raise RuntimeError(
+            "无法定位 AstrBot 根目录；请设置 ASTRBOT_ROOT，"
+            "或把插件放在 <AstrBot>/data/plugins/ 下"
+        )
+    return root / "data" / "plugin_data" / PLUGIN_DIR_NAME
+
+
 def data_dir() -> Path:
-    """数据目录。配置 data_dir 可以指向插件目录之外。"""
-    raw = load().get("data_dir")
-    if raw:
-        p = Path(str(raw))
-        return p if p.is_absolute() else ROOT / p
-    return _DEFAULT_DATA
+    """插件持久化数据目录：data/plugin_data/<plugin_name>。"""
+    path = _plugin_data_dir()
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def temp_dir() -> Path:
     return data_dir() / "temp"
 
 
-# data_dir 是唯一可配置的路径；下面全部由它按固定顺序派生
+# 以下路径全部由 data_dir 按固定顺序派生
 def anime_db() -> Path:
     return data_dir() / "anime.db"
 

@@ -25,7 +25,13 @@
 cd /AstrBot/data/plugins
 git clone https://github.com/ShioMI39/astrbot_plugin_animerag.git
 ```
-数据包在webui里下载
+资源包在 WebUI「数据维护」里下载，解压到：
+
+```text
+<AstrBot>/data/plugin_data/astrbot_plugin_animerag/
+```
+
+解压后该目录应直接包含 `anime.db`、`vec/`、`translate.db` 等文件，不要再套一层 `data/`。
 
 
 **模型全部复用 AstrBot 的配置**，先在「服务提供商」页面建三类 provider：
@@ -49,11 +55,10 @@ git clone https://github.com/ShioMI39/astrbot_plugin_animerag.git
 
 ## 配置
 
-`_conf_schema.json` 里 9 项，常用的：
+`_conf_schema.json` 常用项：
 
 | 项 | 默认 | 说明                                                  |
 |---|---|-----------------------------------------------------|
-| `data_dir` | 留空 | 数据目录。留空用插件目录下的 `data/`                              |
 | `embedding_provider_id` | 留空 | **必填**。AstrBot 的 Embedding provider ID，数据包默认使用1024维 |
 | `rerank_provider_id` | 留空 | 选填。填了才启用重排序功能                                       |
 | `translate_provider_id` | 留空 | 选填。翻译用的 chat_completion provider ID                 |
