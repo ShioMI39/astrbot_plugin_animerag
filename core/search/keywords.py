@@ -28,6 +28,9 @@ _EYE = ("眼睛", "眼瞳", "瞳", "眼", "眸", "目")
 _COLOR_SUFFIX = ("色系", "颜色", "色")
 
 _COLORS = sorted(attrs.COLOR_GROUPS, key=len, reverse=True)
+# 只有独立颜色词、带色/发/瞳标记，或前面是浅/深等修饰字时才接受。
+_COLOR_BOUNDARY = set(" \t\r\n、,，/／;；")
+_COLOR_MODIFIERS = set("浅深淡暗亮")
 
 _CACHE: dict[int, dict[str, Any]] = {}
 
@@ -101,6 +104,12 @@ def _color_hit(q: str, i: int) -> tuple[list[tuple[str, str, bool]], int] | None
     for suf in _EYE:
         if q.startswith(suf, j):
             return [("瞳色", group, True)], j + len(suf)
+
+    # 没有「发/瞳/色」等标记时，只接受独立颜色词或「浅蓝」这类修饰词
+    if i > 0 and q[i - 1] not in _COLOR_BOUNDARY and q[i - 1] not in _COLOR_MODIFIERS:
+        return None
+    if j < len(q) and q[j] not in _COLOR_BOUNDARY:
+        return None
     return [("发色", group, True), ("瞳色", group, True)], j
 
 
