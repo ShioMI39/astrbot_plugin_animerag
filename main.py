@@ -561,11 +561,21 @@ class AnimeRAG(
         need3 = (not name_confident) and (not attr_ok) and (not tag_ok)
         debug["need3"] = need3
         sem_rows: list[dict] = []
+        # 长查询先扩大稠密候选池，再重排。
+        deep = (
+            len(q) >= 40 and self.retriever is not None
+            and getattr(self.retriever, "rerank_enabled", False)
+        )
+        debug["semantic_deep"] = deep
         if need3 and self.retriever is not None:
             try:
                 hold = await self.retriever.retrieve(
-                    q, kinds=kinds, top_k=semantic_k, min_score=self.min_score,
+                    q, kinds=kinds,
+                    top_k=semantic_k,
+                    min_score=self.min_score,
                     force_dense=True, qv=qv,
+                    candidate_k=400 if deep else None,
+                    rerank_k=400 if deep else None,
                 )
             except Exception as exc:  # noqa: BLE001
                 debug["semantic_error"] = "{}: {}".format(

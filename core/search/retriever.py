@@ -117,6 +117,8 @@ class Retriever:
         min_score: float = DEFAULT_MIN_SCORE,
         force_dense: bool = False,
         qv=None,
+        candidate_k: int | None = None,
+        rerank_k: int | None = None,
     ) -> list[dict[str, Any]]:
         ks = set(kinds) if kinds else None
         lex = self._lexical(query, ks, limit=max(top_k, 10))
@@ -148,11 +150,16 @@ class Retriever:
             None if ks is None else {k for k in ks if k not in NO_DENSE_KINDS}
         )
         dense = (
-            await self._dense(query, dense_kinds, top_k, min_score, qv=qv)
+            await self._dense(
+                query, dense_kinds,
+                candidate_k if candidate_k is not None else top_k,
+                min_score, qv=qv,
+            )
             if (dense_kinds is None or dense_kinds)
             else []
         )
 
+        merge_limit = rerank_k if rerank_k is not None else self.rerank_top_n
         merged: list[dict[str, Any]] = []
         seen: set[tuple[str, int]] = set()
         for h in lex + dense:
@@ -161,7 +168,7 @@ class Retriever:
                 continue
             seen.add(key)
             merged.append(h)
-            if len(merged) >= self.rerank_top_n:
+            if len(merged) >= merge_limit:
                 break
 
         if self.rerank_enabled and dense and len(merged) > 1:
@@ -172,7 +179,7 @@ class Retriever:
                 text = str(h.get("text") or "").strip()
                 docs.append((title + " " + text).strip() if title else text)
             scored = await rr.rerank(
-                query, docs, model=self.rerank_model, top_n=self.rerank_top_n
+                query, docs, model=self.rerank_model, top_n=merge_limit
             )
             if scored:
                 ordered: list[dict[str, Any]] = []

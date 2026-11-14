@@ -107,9 +107,9 @@ def get_worklist(
     end_month: str | None = None,
     score_min: float | None = None,
     score_max: float | None = None,
-    limit: int = 30,
+    limit: int = 60,
 ) -> list[dict[str, Any]]:
-    """按 tag/月份/评分筛作品，按 tag 命中数、日期、评分排序。"""
+    """按 tag/月份/评分筛作品；命中 tag 数优先，再评分、日期倒序。"""
     tags = list(dict.fromkeys(t.strip() for t in (tags or []) if t and t.strip()))
     where: list[str] = []
     where_params: list[Any] = []
@@ -141,15 +141,16 @@ def get_worklist(
     matched_sql = "COUNT(DISTINCT wt.tag)" if tags else "0"
     sql = (
         "SELECT w.work_id, w.name, w.name_cn, w.date,"
-        " {} AS matched, MAX(s.score) AS score".format(matched_sql)
+        " {} AS matched, MAX(s.score) AS score,"
+        " MAX(s.score_count) AS score_count".format(matched_sql)
         + " FROM works w"
         " LEFT JOIN work_stats s ON s.work_id = w.work_id"
         + join_sql
         + (" WHERE " + " AND ".join(where) if where else "")
         + " GROUP BY w.work_id"
         + having
-        + " ORDER BY matched DESC, (w.date IS NULL), w.date DESC,"
-        " (s.score IS NULL), s.score DESC, w.work_id"
+        + " ORDER BY matched DESC, (score IS NULL), score DESC,"
+        " (w.date IS NULL), w.date DESC, w.work_id"
         " LIMIT ?"
     )
     limit = max(1, min(int(limit), 100))
@@ -170,6 +171,7 @@ def get_work_relations(conn: sqlite3.Connection,
         (work_id,),
     )
     return [dict(r) for r in rows]
+
 
 
 def get_character(conn: sqlite3.Connection,

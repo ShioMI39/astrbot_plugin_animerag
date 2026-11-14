@@ -149,7 +149,7 @@ class ToolMixin:
             end_month=end,
             score_min=float(score_min) if score_min is not None else None,
             score_max=float(score_max) if score_max is not None else None,
-            limit=30,
+            limit=60,
         )
         if not rows:
             return "没有符合条件的作品。"
@@ -161,7 +161,7 @@ class ToolMixin:
             "{:.1f}".format(float(score_max)) if score_max is not None else "不限",
         )
         lines = [
-            "[作品列表] tag={} · 时间={} · 评分={} · 显示前 {} 部".format(
+            "[作品列表] tag={} · 时间={} · 评分={} · 返回 {} 部（最多 60 部）".format(
                 tag_text, date_text, score_text, len(rows))
         ]
         for r in rows:
@@ -169,12 +169,13 @@ class ToolMixin:
             matched = int(r["matched"] or 0)
             hit = "命中{}/{}".format(matched, len(tags)) if tags else "命中0"
             date = r["date"] or "—"
-            score = (
-                "{:.1f}".format(float(r["score"]))
-                if r["score"] is not None else "—"
-            )
+            if r["score"] is not None:
+                score = "评分 {:.1f}（{} 人评分）".format(
+                    float(r["score"]), int(r["score_count"] or 0))
+            else:
+                score = "评分 —（0 人评分）"
             lines.append(
-                "[作品#{}] {} · {} · {} · 评分 {}".format(
+                "[作品#{}] {} · {} · {} · {}".format(
                     r["work_id"], title, hit, date, score)
             )
         return "\n".join(lines)
