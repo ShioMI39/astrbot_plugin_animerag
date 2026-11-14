@@ -1,0 +1,144 @@
+{
+  "model_group": {
+    "type": "object",
+    "description": "模型配置",
+    "hint": "都填 AstrBot「服务提供商」里的 provider ID",
+    "items": {
+      "embedding_provider_id": {
+        "type": "string",
+        "description": "Embedding Provider ID（必填）",
+        "default": "",
+        "hint": "必填。填 AstrBot「服务提供商」里 Embedding 类型 provider 的 ID（形如 openai_embedding），也可以填模型名（如 BAAI/bge-m3）。留空插件只能用词法检索，语义召回全废。"
+      },
+      "rerank_provider_id": {
+        "type": "string",
+        "description": "Rerank Provider ID（可选）",
+        "default": "",
+        "hint": "选填。填了才启用重排序，留空就是纯向量 + 词法。实测开启后有些提升"
+      },
+      "translate_provider_id": {
+        "type": "string",
+        "description": "翻译模型",
+        "default": "",
+        "hint": "从 AstrBot 已配的对话模型里选。scripts/build/translate.py 直接用它翻译简介，留空则不启用翻译",
+        "_special": "select_provider"
+      }
+    }
+  },
+  "param_group": {
+    "type": "object",
+    "description": "参数配置",
+    "hint": "调检索效果，一般不用动",
+    "items": {
+      "enable_moegirl": {
+        "type": "bool",
+        "description": "启用萌娘百科层",
+        "default": false,
+        "hint": "需要先下载资源包（含 moegirl.db / moegirl_bodies.json），再打开。关掉只用 Bangumi：没有属性查询和萌百正文块"
+      },
+      "top_k": {
+        "type": "int",
+        "description": "语义召回条数（5-12）",
+        "default": 8,
+        "hint": "控制语义召回的 top_k；超出 5-12 会被插件无效。名字/标签仍各最多 5 条"
+      },
+      "top_n": {
+        "type": "int",
+        "description": "search_anime 返回总条数（18-25）",
+        "default": 20,
+        "hint": "工具最终返回的名字+属性+标签/语义总条数；超出 18-25 会被插件无效"
+      },
+      "min_score": {
+        "type": "float",
+        "description": "稠密检索的最低余弦阈值",
+        "default": 0.55,
+        "hint": "低于此值不返回，避免拿不相关资料硬答"
+      },
+      "translate_concurrency": {
+        "type": "int",
+        "description": "翻译并发数",
+        "default": 10,
+        "hint": "范围 1-20。太高可能会触发限流"
+      },
+      "rerank_top_n": {
+        "type": "int",
+        "description": "重排多少条候选",
+        "default": 20,
+        "hint": "只重排召回前 N 条，后面的不动"
+      },
+      "rerank_min_score": {
+        "type": "float",
+        "description": "rerank 分数下限（0 表示不过滤）",
+        "default": 0.02,
+        "hint": "低于此值视为不相关丢弃"
+      },
+      "tag_tau": {
+        "type": "float",
+        "description": "tag 语义最低相似度",
+        "default": 0.62,
+        "hint": "低于此值不取该 tag"
+      },
+      "tag_high": {
+        "type": "float",
+        "description": "tag 语义高置信阈值",
+        "default": 0.68,
+        "hint": "大于此值直接接受，不再要求与第二名拉开差距；避免「搞笑/喜剧」这种近义 tag 被误杀"
+      },
+      "tag_delta": {
+        "type": "float",
+        "description": "tag 语义最小分差",
+        "default": 0.02,
+        "hint": "第一名与第二名 tag 差距小于此值就放弃，避免模棱两可"
+      },
+      "tag_floor": {
+        "type": "float",
+        "description": "同批 tag 的最低分",
+        "default": 0.55,
+        "hint": "第一名通过后，其余 tag 至少要达到此分才一起取出"
+      },
+      "tag_top_k": {
+        "type": "int",
+        "description": "一次最多取几个 tag",
+        "default": 3,
+        "hint": "取太多会把弱相关 tag 取出；3 个够用"
+      },
+      "tag_match_min": {
+        "type": "int",
+        "description": "多 tag 时每部作品至少命中几个",
+        "default": 2,
+        "hint": "单 tag 查询只要求 1 个"
+      },
+      "tag_hit_min": {
+        "type": "int",
+        "description": "至少几部作品算 tag 命中",
+        "default": 3,
+        "hint": "返回作品数达到此值才跳过语义检索"
+      }
+    }
+  },
+  "other_group": {
+    "type": "object",
+    "description": "其他配置",
+    "hint": "数据目录、下载代理",
+    "items": {
+      "data_dir": {
+        "type": "string",
+        "description": "数据目录",
+        "default": "",
+        "hint": "只填数据包根目录，留空用插件目录下的 data/。内部固定读取 anime.db、moegirl.db、translate.db、vec/"
+      },
+      "update_proxy": {
+        "type": "string",
+        "description": "Bangumi dump 下载代理",
+        "default": "",
+        "hint": "例如 http://127.0.0.1:7890。留空先读 HTTPS_PROXY/HTTP_PROXY，再尝试 Windows 系统代理；GitHub release 直连超时时必须填"
+      },
+      "keep_dump": {
+        "type": "bool",
+        "description": "导入后保留 dump",
+        "default": false,
+        "hint": "默认删掉，省 2.2 GB"
+      }
+    }
+  }
+}

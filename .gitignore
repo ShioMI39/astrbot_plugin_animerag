@@ -205,3 +205,23 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+dump-*/
+
+.cache_*
+.report.txt
+
+.env.local*
+*.secret.json
+
+# PyCharm
+.idea/
+
+docs/
+tests/
+data/
+
+# 打包产物
+dist/*.zip
+dist/*.tar.gz
+
