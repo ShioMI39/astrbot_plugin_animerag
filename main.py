@@ -21,6 +21,8 @@ from .core.db.moe import schema as _moe_schema
 from .core.db.translate import queries as _tr_q
 from .core.search import candidates as _cand
 from .core.search import embedder as _emb
+from .core.search import expand as _expand
+from .core.search import gate as _gate
 from .core.search import keywords as _kw
 from .core.search import rerank as _rr
 from .core.search import tags as _tag
@@ -30,6 +32,9 @@ from .webui import WebUIMixin
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
+
+NAME_SLOTS = 5
+TAG_SLOTS = 8
 
 
 class AnimeRAG(
@@ -57,7 +62,9 @@ class AnimeRAG(
         self.embedding_provider_id = str(self.cfg.get("embedding_provider_id") or "").strip()
         self.rerank_provider_id = str(self.cfg.get("rerank_provider_id") or "").strip()
         self.top_k = max(5, min(12, int(self.cfg.get("top_k") or 8)))
-        self.top_n = max(18, min(25, int(self.cfg.get("top_n") or 20)))
+        top_n_raw = int(self.cfg.get("top_n") or 30)
+        # 28~35 之外视为旧配置/写错，回落到默认 30
+        self.top_n = top_n_raw if 28 <= top_n_raw <= 35 else 30
         self.min_score = float(self.cfg.get("min_score") or 0.55)
 
         self.zh_char: dict[int, str] = {}
@@ -469,22 +476,29 @@ class AnimeRAG(
 
         # ── 第 1 层：精确名字候选 ──────────────────────────────
         name_rows, name_confident = _cand.find(self.db, q, kinds=kinds, limit=5)
-        debug["name"] = {"total": len(name_rows), "confident": name_confident}
+        name_total = len(name_rows)
+        name_rows = [
+            r for r in name_rows
+            if float(r.get("coverage") or 0.0) >= _cand.MIN_SCAN_COVERAGE
+        ]
+        debug["name"] = {
+            "total": len(name_rows), "scanned": name_total,
+            "confident": name_confident,
+        }
 
-        # ── 第 2a 层：角色属性 ─────────────────────────────────
+        # ── 第 2a 层：角色属性 ─────
         kws: list[dict] = []
         raw_attr: list[dict] = []
         attr_total = 0
-        kw_count = 0
         attr_ok = False
+        attr_meta: dict = {"norm": "", "distinct": 0, "spans": 0, "union": 0, "best": 0}
+        attr_gate: dict = {"ok": False, "reasons": ["disabled"]}
         if self.mg is not None and (kinds is None or "character" in kinds):
-            kws, raw_attr = _kw.search(self.mg, q, ignore=_kw.GENERIC_TRAITS)
-            kw_count = len({x["kid"] for x in kws})
-            attr_total = len(raw_attr)
-            attr_ok = (
-                (kw_count >= 2 and attr_total >= 3)
-                or (kw_count == 1 and attr_total >= 20)
-            )
+            kws, raw_attr, attr_meta = _kw.search_with_meta(
+                self.mg, q, ignore=_kw.GENERIC_TRAITS)
+            attr_gate = _gate.evaluate(attr_meta["norm"], kws, raw_attr)
+            attr_ok = bool(attr_gate["ok"])
+            attr_total = attr_meta["union"]
             seen_labels: set[tuple[str, str]] = set()
             for kw in kws:
                 pair = (kw["key"], kw["target"])
@@ -496,7 +510,10 @@ class AnimeRAG(
                 })
 
         debug["attr"] = {
-            "keywords": kw_count, "total": attr_total, "satisfied": attr_ok,
+            "keywords": attr_meta["distinct"],
+            "total": attr_total,
+            "satisfied": attr_ok,
+            "gate": attr_gate,
         }
 
         attr_items: list[dict] = []
@@ -521,7 +538,6 @@ class AnimeRAG(
         # ── 第 2b 层：作品标签 ─────────────────────────────────
         tag_names: list[str] = []
         tag_rows: list[dict] = []
-        tag_ok = False
         qv = None
         if kinds is None or "work" in kinds:
             tag_names = _tag.scan(q)
@@ -542,18 +558,17 @@ class AnimeRAG(
                     qv = None
             if tag_names:
                 tag_rows = _tag.search_works(
-                    self.db.conn, tag_names, limit=5,
+                    self.db.conn, tag_names, limit=TAG_SLOTS,
                     min_match=int(self.cfg.get("tag_match_min") or 2),
                 )
-                tag_ok = len(tag_rows) >= int(self.cfg.get("tag_hit_min") or 3)
 
         debug["tag"] = {
-            "tags": tag_names, "total": len(tag_rows), "hit": tag_ok,
+            "tags": tag_names, "total": len(tag_rows),
             "semantic": qv is not None,
         }
 
-        # ── 第 3 层：只有结构化层都不够用时才跑 ────────────────
-        need3 = (not name_confident) and (not attr_ok) and (not tag_ok)
+        # ── 第 3 层：语义 ──────────────
+        need3 = (not name_confident) and (not attr_ok)
         debug["need3"] = need3
         sem_rows: list[dict] = []
         # 长查询先扩大稠密候选池，再重排。
@@ -578,6 +593,7 @@ class AnimeRAG(
                 hold = []
             for h in hold:
                 sem_rows.append({
+                    "id": h.get("id"),
                     "kind": h.get("kind"),
                     "ref_id": h.get("ref_id"),
                     "title": str(h.get("title") or ""),
@@ -585,7 +601,7 @@ class AnimeRAG(
                     "score": h.get("score"),
                     "rerank_score": h.get("rerank_score"),
                 })
-        debug["semantic"] = {"total": len(sem_rows)}
+        debug["semantic"] = {"total": len(sem_rows), "expanded": 0}
 
         # ── 总装：去重 + 配额 ──────────────────────────────────
         seen: set[tuple[str, int]] = set()
@@ -598,69 +614,78 @@ class AnimeRAG(
             sections[section].append(item)
             return True
 
-        name_cap = min(5, cap)
+        name_cap = min(NAME_SLOTS, cap)
         for item in name_rows[:name_cap]:
             add("name", item)
 
-        if need3:
-            # 语义段先占 top_k 个名额（按 chunk 实体去重），2a 再把剩余名额补满
-            sem_cap = min(semantic_k, max(0, cap - len(sections["name"])))
-            sem_seen: set[tuple[str, int]] = set()
-            for row in sem_rows[:sem_cap]:
-                key = (row.get("kind"), int(row.get("ref_id") or 0))
-                if key in sem_seen:
-                    continue
-                sem_seen.add(key)
-                sections["semantic"].append(row)
-            attr_cap = max(
-                0, cap - len(sections["name"]) - len(sections["semantic"]))
-            for item in attr_items[:attr_cap]:
-                add("attr", item)
-        else:
-            tag_cap = min(5, max(0, cap - len(sections["name"])))
-            for row in tag_rows[:tag_cap]:
-                add("tag", {
-                    "kind": "work",
-                    "ref_id": int(row["work_id"]),
-                    "title": row["title"],
-                    "matched": row["matched"],
-                    "tags": row["tags"],
-                    "favorite_done": row["favorite_done"],
-                })
-            room = max(0, cap - len(sections["name"]) - len(sections["tag"]))
-            for item in attr_items[:room]:
-                add("attr", item)
+        tag_cap = min(TAG_SLOTS, max(0, cap - len(sections["name"])))
+        for row in tag_rows[:tag_cap]:
+            add("tag", {
+                "kind": "work",
+                "ref_id": int(row["work_id"]),
+                "title": row["title"],
+                "matched": row["matched"],
+                "tags": row["tags"],
+                "favorite_done": row["favorite_done"],
+            })
 
-        # 预算裁剪（按 section 顺序）
-        order = ("name", "tag", "attr", "semantic") if not need3 else (
-            "name", "attr", "semantic",
+        if need3:
+            # 语义最多 top_k 条，并和名字/标签按实体去重，别浪费名额
+            sem_cap = min(
+                semantic_k,
+                max(0, cap - len(sections["name"]) - len(sections["tag"])),
+            )
+            for row in sem_rows:
+                if len(sections["semantic"]) >= sem_cap:
+                    break
+                key = (row.get("kind"), int(row.get("ref_id") or 0))
+                if key in seen:
+                    continue
+                seen.add(key)
+                sections["semantic"].append(row)
+
+            # P1：角色命中后补该角色的萌百正文块（不依赖相似度）
+            if self.retriever is not None:
+                room = min(
+                    _expand.MAX_CHUNKS,
+                    max(0, cap - len(sections["name"])
+                        - len(sections["tag"]) - len(sections["semantic"])),
+                )
+                debug["semantic"]["expanded"] = _expand.expand_bodies(
+                    self.retriever.idx, sections["semantic"], room)
+
+        # 属性补满剩余名额
+        room = max(
+            0,
+            cap - len(sections["name"]) - len(sections["tag"])
+            - len(sections["semantic"]),
         )
+        for item in attr_items[:room]:
+            add("attr", item)
+
         left = cap
-        for section in order:
+        for section in ("name", "tag", "semantic", "attr"):
             sections[section] = sections[section][:left]
             left -= len(sections[section])
 
         hits: list[dict] = []
-        for item in sections["name"]:
-            hits.append({
-                **item, "score": None, "rerank_score": None, "source": "name",
-                "note": "w={} · 热度{}".format(item["weight"], item["popularity"]),
-            })
-        for item in sections["tag"]:
-            hits.append({
-                **item, "score": None, "rerank_score": None, "source": "tag",
-                "note": "命中{}/{}: {}".format(
-                    item["matched"], len(tag_names), "、".join(item["tags"])),
-            })
-        for item in sections["attr"]:
-            hits.append({
-                **item, "score": None, "rerank_score": None, "source": "attr",
-                "note": "命中{}: {}".format(item["matched"], "、".join(item["labels"])),
-            })
-        for item in sections["semantic"]:
-            hits.append({
-                **item, "source": "semantic", "note": "",
-            })
+        name_hits = [{
+            **item, "score": None, "rerank_score": None, "source": "name",
+            "note": "w={} · 热度{}".format(item["weight"], item["popularity"]),
+        } for item in sections["name"]]
+        tag_hits = [{
+            **item, "score": None, "rerank_score": None, "source": "tag",
+            "note": "命中{}/{}: {}".format(
+                item["matched"], len(tag_names), "、".join(item["tags"])),
+        } for item in sections["tag"]]
+        attr_hits = [{
+            **item, "score": None, "rerank_score": None, "source": "attr",
+            "note": "命中{}: {}".format(item["matched"], "、".join(item["labels"])),
+        } for item in sections["attr"]]
+        sem_hits = [{**item, "source": "semantic", "note": ""}
+                    for item in sections["semantic"]]
+        hits = ((sem_hits + name_hits + tag_hits + attr_hits) if need3
+                else (name_hits + attr_hits + tag_hits))
 
         mode = "attr" if (
             sections["attr"] and not sections["name"]

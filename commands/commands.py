@@ -72,10 +72,19 @@ class CommandMixin:
                 len(sections.get("tag") or []),
                 len(sections.get("semantic") or []),
             )
+            expanded = ((r.get("debug") or {}).get("semantic") or {}).get("expanded") or 0
+            if expanded:
+                head += "（含补正文 {} 条）".format(expanded)
             if r.get("reranked"):
                 head += "（语义段已重排）"
             if r.get("error"):
                 head += "（{}）".format(r["error"])
+            gate = ((r.get("debug") or {}).get("attr") or {}).get("gate") or {}
+            reasons = gate.get("reasons") or []
+            if gate.get("ok"):
+                head += "\n属性闸门：短路（属性列表即答案）"
+            elif reasons and reasons != ["disabled"]:
+                head += "\n属性闸门：未短路（{}）".format("、".join(reasons))
             lines = [head]
             for i, h in enumerate(hits, 1):
                 # 只显示排序用的那个分

@@ -6,16 +6,19 @@ from typing import Any, Iterable
 from ..db.bgm import queries
 from ..db.bgm.schema import Database
 from ..normalize import to_simplified
+from .keywords import GENERIC_TRAITS
 
 STRONG_WEIGHT = 90
 MIN_POPULARITY = {"character": 50, "work": 500, "person": 3, "org": 3}
 MAX_CANDIDATES = 5
 MAX_TERM = 12
+MIN_SCAN_COVERAGE = 0.5
 
 _LEX: dict[str, tuple[dict[str, list[tuple[str, int, int]]], int]] = {}
 
-# 长句扫描时这些词太泛，不作为实体名（整体查询仍走 exact）
-_SCAN_SKIP = {"主角", "配角", "客串", "闲角", "旁白", "路人", "我", "你", "他", "她", "它"}
+_SCAN_SKIP = {
+    "主角", "配角", "客串", "闲角", "旁白", "路人", "我", "你", "他", "她", "它",
+} | set(GENERIC_TRAITS)
 
 
 def _popularity(db: Database, kind: str, ref_id: int) -> int:
@@ -94,6 +97,7 @@ def _pick(
     confident = any(
         c["weight"] >= STRONG_WEIGHT
         and c["popularity"] >= MIN_POPULARITY.get(c["kind"], 0)
+        and (c.get("exact") or float(c.get("coverage") or 0.0) >= MIN_SCAN_COVERAGE)
         for c in picked
     )
     return picked, confident
@@ -105,12 +109,26 @@ def _add(
     ref_id: int,
     weight: int,
     wanted: set[str] | None,
+    exact: bool,
+    coverage: float = 1.0,
 ) -> None:
     if wanted is not None and kind not in wanted:
         return
     key = (kind, ref_id)
-    if key not in items or weight > items[key]["weight"]:
-        items[key] = {"kind": kind, "ref_id": ref_id, "weight": weight}
+    cur = items.get(key)
+    if cur is None:
+        items[key] = {
+            "kind": kind, "ref_id": ref_id, "weight": weight,
+            "exact": exact, "coverage": coverage,
+        }
+        return
+    if exact:
+        cur["exact"] = True
+        cur["coverage"] = 1.0
+    elif coverage > cur["coverage"]:
+        cur["coverage"] = coverage
+    if weight > cur["weight"]:
+        cur["weight"] = weight
 
 
 def scan(
@@ -141,7 +159,8 @@ def scan(
             i += len(term)
             continue
         for kind, ref_id, weight in refs:
-            _add(items, kind, ref_id, weight, wanted)
+            _add(items, kind, ref_id, weight, wanted, exact=False,
+                 coverage=len(term) / len(text))
         i += len(term)
     return list(items.values())
 
@@ -159,7 +178,9 @@ def find(
     wanted = set(kinds) if kinds else None
     items: dict[tuple[str, int], dict[str, Any]] = {}
     for r in queries.search(db.conn, q, limit=50):
-        _add(items, r["target_kind"], int(r["target_id"]), int(r["weight"]), wanted)
+        _add(items, r["target_kind"], int(r["target_id"]), int(r["weight"]),
+             wanted, exact=True)
     for r in scan(db, q, kinds=wanted):
-        _add(items, r["kind"], r["ref_id"], r["weight"], wanted)
+        _add(items, r["kind"], r["ref_id"], r["weight"], wanted, exact=False,
+             coverage=float(r.get("coverage") or 0.0))
     return _pick(db, items, limit)

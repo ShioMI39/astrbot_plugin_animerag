@@ -113,9 +113,7 @@ def _color_hit(q: str, i: int) -> tuple[list[tuple[str, str, bool]], int] | None
     return [("发色", group, True), ("瞳色", group, True)], j
 
 
-def extract(conn, query: str) -> list[dict[str, Any]]:
-    """返回 [{kid, key, target, label, group}]。"""
-    q = _norm(query)
+def _extract_norm(conn, q: str) -> list[dict[str, Any]]:
     if not q:
         return []
     st = _state(conn)
@@ -128,6 +126,7 @@ def extract(conn, query: str) -> list[dict[str, Any]]:
         color = _color_hit(q, i)
         if color is not None:
             pairs, ni = color
+            end = max(ni, i + 1)
             for key, target, group in pairs:
                 item = (kid, key, target, group)
                 if item not in seen:
@@ -135,9 +134,10 @@ def extract(conn, query: str) -> list[dict[str, Any]]:
                     out.append({
                         "kid": kid, "key": key, "target": target,
                         "label": key + "=" + target, "group": group,
+                        "surface": q[i:end], "span": (i, end),
                     })
             kid += 1
-            i = max(ni, i + 1)
+            i = end
             continue
 
         hit = None
@@ -150,6 +150,7 @@ def extract(conn, query: str) -> list[dict[str, Any]]:
             i += 1
             continue
         term, pairs = hit
+        end = i + len(term)
         for key, target in sorted(pairs):
             item = (kid, key, target, False)
             if item not in seen:
@@ -157,10 +158,16 @@ def extract(conn, query: str) -> list[dict[str, Any]]:
                 out.append({
                     "kid": kid, "key": key, "target": target,
                     "label": key + "=" + target, "group": False,
+                    "surface": term, "span": (i, end),
                 })
         kid += 1
-        i += len(term)
+        i = end
     return out
+
+
+def extract(conn, query: str) -> list[dict[str, Any]]:
+    """返回 [{kid, key, target, label, group, surface, span}]。"""
+    return _extract_norm(conn, _norm(query))
 
 
 def _rows_in(conn, key: str, target: str, group: bool) -> list:
@@ -175,6 +182,24 @@ def _rows_in(conn, key: str, target: str, group: bool) -> list:
     return moe_queries.chars_by_norms(conn, key, norms)
 
 
+def _rank(conn, keywords: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """把关键词展开成角色命中。"""
+    criteria: dict[int, set[tuple[str, str]]] = {}
+    labels: dict[int, set[str]] = {}
+    for kw in keywords:
+        for row in _rows_in(conn, kw["key"], kw["target"], kw["group"]):
+            cid = int(row[0])
+            criteria.setdefault(cid, set()).add((kw["key"], kw["target"]))
+            labels.setdefault(cid, set()).add(kw["label"])
+
+    rows = [
+        {"char_id": cid, "matched": len(criteria[cid]), "labels": sorted(labels[cid])}
+        for cid in criteria
+    ]
+    rows.sort(key=lambda r: (-r["matched"], r["char_id"]))
+    return rows
+
+
 def search(
     conn, query: str, ignore: set[str] | None = None
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -183,23 +208,32 @@ def search(
     ignore: 不参与检索的属性值（泛化词、角色定位等）。
     角色命中：[{char_id, matched, labels: [str]}]，按 matched 降序。
     """
-    keywords = extract(conn, query)
+    keywords, rows, _ = search_with_meta(conn, query, ignore=ignore)
+    return keywords, rows
+
+
+def search_with_meta(
+    conn, query: str, ignore: set[str] | None = None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    """同 `search()`，但额外返回算闸门要用的 meta。
+
+    meta:
+        norm      归一化后的查询串（span 的下标属于它）
+        distinct  不同的 (属性名, 属性值) 条件数
+        spans     不同的命中区间数（一处文字解析出多个 key 时 < distinct）
+        union     命中任一条件的角色数
+        best      头部角色满足的条件数
+    """
+    q = _norm(query)
+    keywords = _extract_norm(conn, q)
     if ignore:
         keywords = [k for k in keywords if k["target"] not in ignore]
-    if not keywords:
-        return [], []
-
-    kids: dict[int, set[int]] = {}
-    labels: dict[int, set[str]] = {}
-    for kw in keywords:
-        for row in _rows_in(conn, kw["key"], kw["target"], kw["group"]):
-            cid = int(row[0])
-            kids.setdefault(cid, set()).add(kw["kid"])
-            labels.setdefault(cid, set()).add(kw["label"])
-
-    rows = [
-        {"char_id": cid, "matched": len(kids[cid]), "labels": sorted(labels[cid])}
-        for cid in kids
-    ]
-    rows.sort(key=lambda r: (-r["matched"], r["char_id"]))
-    return keywords, rows
+    rows = _rank(conn, keywords)
+    meta = {
+        "norm": q,
+        "distinct": len({(k["key"], k["target"]) for k in keywords}),
+        "spans": len({tuple(k["span"]) for k in keywords if k.get("span")}),
+        "union": len(rows),
+        "best": int(rows[0]["matched"]) if rows else 0,
+    }
+    return keywords, rows, meta

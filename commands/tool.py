@@ -56,57 +56,61 @@ class ToolMixin:
                 "请让用户补充角色名、番剧名、年份或制作公司。不要编造。"
             )
 
-        out: list[str] = []
+        blocks: dict[str, list[str]] = {}
 
         if names:
-            out.append("[名字命中]")
+            block = ["[名字命中]"]
             for item in names:
-                out.append("[{}#{}] {} · w={} · 热度{}".format(
+                block.append("[{}#{}] {} · w={} · 热度{}".format(
                     _kind(item["kind"]), item["ref_id"], item["title"],
                     item["weight"], item["popularity"],
                 ))
+            blocks["name"] = block
 
         if attrs:
             labels = result.get("attr") or []
-            head = "、".join(a.get("label", "") for a in labels)
-            out.append("")
-            out.append("[属性命中] {}".format(head))
+            block = ["[属性命中] {}".format(
+                "、".join(a.get("label", "") for a in labels))]
             for item in attrs:
-                out.append("[角色#{}] {} · 命中{}: {}".format(
+                block.append("[角色#{}] {} · 命中{}: {}".format(
                     item["ref_id"], item["title"], item["matched"],
                     "、".join(item["labels"]),
                 ))
+            blocks["attr"] = block
 
         if tag_hits:
             tags = (result.get("debug") or {}).get("tag", {}).get("tags") or []
-            out.append("")
-            out.append("[标签命中] {}".format("、".join(tags)))
+            block = ["[标签命中] {}".format("、".join(tags))]
             for item in tag_hits:
-                out.append("[作品#{}] {} · {}/{}: {} · 看过{}".format(
+                block.append("[作品#{}] {} · {}/{}: {} · 看过{}".format(
                     item["ref_id"], item["title"], item["matched"], len(tags),
                     "、".join(item["tags"]), item["favorite_done"],
                 ))
+            blocks["tag"] = block
 
         if semantic:
-            out.append("")
-            out.append("[语义片段]")
+            block = ["[语义片段]"]
             for item in semantic:
                 score = item.get("rerank_score")
                 if not isinstance(score, (int, float)):
                     score = item.get("score")
                 tail = "（{:.3f}）".format(float(score)) if isinstance(score, (int, float)) else ""
-                out.append("[{}#{}] {} {}".format(
+                block.append("[{}#{}] {} {}".format(
                     _kind(item["kind"]), item["ref_id"], item["title"], tail,
                 ).rstrip())
                 text = (item.get("text") or "").strip()
                 if text:
-                    out.append("  " + text[:240].replace("\n", " "))
+                    block.append("  " + text[:240].replace("\n", " "))
+            blocks["semantic"] = block
 
-        out.append("")
+        need3 = bool((result.get("debug") or {}).get("need3"))
+        order = (("semantic", "name", "tag", "attr") if need3
+                 else ("name", "attr", "tag", "semantic"))
+        out = ["\n".join(blocks[k]) for k in order if k in blocks]
         out.append("取完整资料用 get_entity(kind, id)；单集用 "
                    'get_entity(kind="episode", id=...) 或 '
                    'get_entity(kind="work", id=..., part="episodes", start=N, end=N)。')
-        return "\n".join(out)
+        return "\n\n".join(out)
 
     async def get_worklist(
         self,

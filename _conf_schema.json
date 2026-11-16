@@ -44,9 +44,9 @@
       },
       "top_n": {
         "type": "int",
-        "description": "search_anime 返回总条数（18-25）",
-        "default": 20,
-        "hint": "工具最终返回的名字+属性+标签/语义总条数；超出 18-25 会被插件无效"
+        "description": "search_anime 返回总条数（28-35）",
+        "default": 30,
+        "hint": "名字+标签+语义+属性总共返回多少条；范围 28-35，超出范围按默认 30 处理"
       },
       "min_score": {
         "type": "float",
@@ -107,12 +107,6 @@
         "description": "多 tag 时每部作品至少命中几个",
         "default": 2,
         "hint": "单 tag 查询只要求 1 个"
-      },
-      "tag_hit_min": {
-        "type": "int",
-        "description": "至少几部作品算 tag 命中",
-        "default": 3,
-        "hint": "返回作品数达到此值才跳过语义检索"
       }
     }
   },
