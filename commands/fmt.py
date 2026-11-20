@@ -68,14 +68,12 @@ class FormatMixin:
         d["attrs"] = self._attrs(cid)
         return d
 
-    def _attrs(self, cid: int) -> dict[str, str]:
+    def _attrs(self, cid: int) -> dict[str, list[str]]:
+        """按 attr_key 聚合，保留多值（萌点/所属团体经常有多行）。"""
         if not self.mg:
             return {}
         try:
-            return {
-                r["attr_key"]: r["attr_value"]
-                for r in moe_queries.character_attrs(self.mg, cid)
-            }
+            return moe_queries.character_attrs_grouped(self.mg, cid)
         except Exception:
             return {}
 
@@ -101,16 +99,18 @@ class FormatMixin:
             if bits:
                 lines.append("声优：" + "；".join(bits))
         if d.get("attrs"):
-            order = ["萌点", "发色", "瞳色", "身高", "生日", "星座", "血型", "体重", "所属团体"]
-            parts = [
-                "{}：{}".format(k, d["attrs"][k])
-                for k in order if k in d["attrs"]
-            ]
+            parts = []
+            for k in ATTR_ORDER:
+                vals = d["attrs"].get(k)
+                if vals:
+                    parts.append("{}：{}".format(k, "、".join(vals)))
             parts += [
-                "{}：{}".format(k, v) for k, v in d["attrs"].items()
-                if k not in order
+                "{}：{}".format(k, "、".join(vals))
+                for k, vals in d["attrs"].items()
+                if k not in ATTR_ORDER and vals
             ]
-            lines.append("　".join(parts))
+            if parts:
+                lines.append("　".join(parts))
         text = body or self.zh_char.get(d.get("char_id")) or (d.get("summary") or "")
         if text:
             lines.append("")

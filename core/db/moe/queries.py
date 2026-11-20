@@ -26,8 +26,23 @@ def character_attrs(conn: sqlite3.Connection,
                     char_id: int) -> list[sqlite3.Row]:
     return list(conn.execute(
         "SELECT attr_key, attr_value FROM character_attributes"
-        " WHERE char_id = ?", (char_id,)
+        " WHERE char_id = ? ORDER BY rowid", (char_id,)
     ))
+
+
+def character_attrs_grouped(conn: sqlite3.Connection,
+                            char_id: int) -> dict[str, list[str]]:
+    """按 attr_key 聚合，保留多值。"""
+    out: dict[str, list[str]] = {}
+    for row in character_attrs(conn, char_id):
+        key = str(row["attr_key"] or "").strip()
+        value = str(row["attr_value"] or "").strip()
+        if not key or not value:
+            continue
+        values = out.setdefault(key, [])
+        if value not in values:
+            values.append(value)
+    return out
 
 
 def chars_by_raw_values(conn: sqlite3.Connection, attr_key: str,
